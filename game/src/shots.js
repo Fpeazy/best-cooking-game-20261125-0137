@@ -100,6 +100,23 @@ function topUpOrders(g) {
   }
 }
 
+// Feet-clear floor gaps between the dining tables (see render.js): the
+// chef's legs span ±26 px, so a staged chef x must sit in [314,496] or
+// [784,966]. Anything outside snaps to the nearest gap centre.
+const FLOOR_GAPS = [[314, 496], [784, 966]];
+function stageChefX(x) {
+  for (const [lo, hi] of FLOOR_GAPS) {
+    if (x >= lo && x <= hi) return x;
+  }
+  let best = 875;
+  let bestD = Infinity;
+  for (const [lo, hi] of FLOOR_GAPS) {
+    const c = (lo + hi) / 2;
+    if (Math.abs(x - c) < bestD) { bestD = Math.abs(x - c); best = c; }
+  }
+  return best;
+}
+
 export function stageScene(name) {
   const g = makeGame(7);
   startGame(g);
@@ -134,8 +151,16 @@ export function stageScene(name) {
     if (!g.flash) runFor(g, 20, (state) => state.flash && state.flash.text.startsWith('PERFECT'));
   }
   topUpOrders(g);
-  // Keep the chef near the grill for the cover, near the plate otherwise.
-  g.chef.x = name === 'plate' ? 1015 : name === 'serve' ? 1100 : 480;
+  // Chef staging: the chef's FEET (legs, ±26 px) must stand in a floor gap
+  // between the dining tables — left table ends 288, middle 522-758, right
+  // starts 992 — so the feet-clear gaps are [314,496] and [784,966].
+  // stageChefX enforces that: a staged x outside both gaps snaps to the
+  // nearest gap centre instead of silently landing the chef on a table.
+  // Cover/grill: 480 (left gap, near the grill). Plate/serve: 875 (right
+  // gap centre, clear of every table edge and every guest). The old plate
+  // (1015) and serve (1100) positions put the chef ON the right table,
+  // hiding the right guest — this guard makes that impossible to re-stage.
+  g.chef.x = stageChefX(name === 'plate' || name === 'serve' ? 875 : 480);
   g.chef.targetX = null;
   // A clean frame: no transient hint bar over the chef.
   g.message = '';
