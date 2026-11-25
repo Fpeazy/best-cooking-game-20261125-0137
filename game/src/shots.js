@@ -87,6 +87,15 @@ function freeze(g) {
     grillSlots: g.grill.slots.map((s) => (s ? Math.round(s.done) : null)),
     grillBurnt: g.grill.slots.filter((s) => s && s.burnt).length,
     plateSteps: g.plate ? g.plate.taken.length : 0,
+    streak: g.fun ? g.fun.streak : 0,
+    streakBest: g.fun ? g.fun.streakBest : 0,
+    rush: g.fun ? (g.fun.rush.active ? 'active' : (g.fun.rush.done ? 'done' : 'pending')) : 'none',
+    rushTLeft: g.fun ? Math.ceil(g.fun.rush.tLeft) : 0,
+    goldenServed: g.fun ? g.fun.goldenServed : false,
+    goldenSpawn: g.fun ? g.fun.goldenSpawn : 0,
+    rareName: g.fun ? g.fun.bonus.name : null,
+    goldenTicket: g.customers.list.some((c) => c.golden),
+    reactions: g.fun ? g.fun.reactions.length : 0,
   };
 }
 
@@ -135,20 +144,38 @@ export function stageScene(name) {
     if (g.grill.slots.some((s) => s && s.burnt)) g.combo = 0;
     // Resume the pilot briefly so the chef is holding the next chopped skewer.
     runFor(g, 12, (state) => state.skewer && state.skewer.chopped);
+    // Rush event, staged for real: if the rush has not started yet, idle
+    // (stoking, no takes) until it does, so the banner is in the frame.
+    // The grill state survives the idle — burnt slots stay burnt, the chef
+    // keeps holding the chopped skewer — and topUpOrders refills tickets.
+    if (!g.fun.rush.active && !g.fun.rush.done) {
+      for (let i = 0; i < Math.round(30 / DT); i += 1) {
+        if (g.grill.heat < 55) actStoke(g);
+        gameTick(g, IDLE_KEYS, DT);
+        if (g.phase !== 'play' || g.fun.rush.active) break;
+      }
+    }
   } else if (name === 'plate') {
     // Freeze mid-assembly: a plated dish with its first garnish on, and a
     // next step still remaining so the BERIKUTNYA path line is visible.
     runFor(g, 60, (state) => state.elapsed > 25 && state.plate && state.plate.skewer.garnishes.length >= 1
       && state.plate.taken.length < recipeById(state.plate.skewer.recipeId).steps.length);
   } else if (name === 'serve') {
-    // Freeze on the PERFECT stamp, right after a perfect serve, mid-shift.
-    runFor(g, 90, (state) => state.elapsed > 30 && state.flash && state.flash.text.startsWith('PERFECT'));
+    // Freeze on the PERFECT stamp, right after the GOLDEN order is served —
+    // the golden ticket stays visible as a happy "ENAK!" ticket while the
+    // stamp is up. The pilot serves perfect almost every time, so the
+    // golden serve is normally a PERFECT one; if it is not, fall back to
+    // the next PERFECT stamp (still a valid serve shot).
+    runFor(g, 110, (state) => state.elapsed > 30 && state.fun.goldenServed && state.flash && state.flash.text.startsWith('PERFECT'));
+    if (!g.flash && g.phase === 'play') runFor(g, 10, (state) => state.flash && state.flash.text.startsWith('PERFECT'));
   } else {
     // Cover: freeze on a PERFECT serve with the score GENUINELY near the
-    // 1200 target — never 4x it, never faked. The autopilot earns roughly
-    // 140-240 per serve, so the first PERFECT flash past 900 lands ~900-1150.
-    runFor(g, 110, (state) => state.elapsed > 45 && state.score >= 900 && state.flash && state.flash.text.startsWith('PERFECT'));
-    if (!g.flash) runFor(g, 20, (state) => state.flash && state.flash.text.startsWith('PERFECT'));
+    // 1200 target — never 4x it, never faked — and with the PANAS! streak
+    // meter lit (streak >= 2), so the fun is in the frame. Multipliers
+    // make serves pay more now, so the threshold is 800: the first
+    // PERFECT flash past it lands ~800-1250.
+    runFor(g, 110, (state) => state.elapsed > 45 && state.score >= 800 && state.fun.streak >= 2 && state.flash && state.flash.text.startsWith('PERFECT'));
+    if (!g.flash) runFor(g, 20, (state) => state.score >= 900 && state.flash && state.flash.text.startsWith('PERFECT'));
   }
   topUpOrders(g);
   // Chef staging: the chef's FEET (legs, ±26 px) must stand in a floor gap

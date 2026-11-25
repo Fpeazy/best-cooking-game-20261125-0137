@@ -3,6 +3,7 @@
 import { VIEW_W, VIEW_H, STATIONS, INGREDIENTS, GARNISHES, SAUCES, SHIFT_SECONDS, WIN_SCORE, MAX_WALKOUTS } from './config.js';
 import { RECIPES, recipeById, nextStep } from './recipes.js';
 import { grillQuality, PERFECT_LOW, PERFECT_HIGH } from './grill.js';
+import { streakMult } from './fun.js';
 
 function rr(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -203,6 +204,20 @@ function drawTopBar(ctx, g) {
   ctx.fillStyle = '#ff7b00';
   rr(ctx, 420, 68, 440 * prog, 6, 3);
   ctx.fill();
+  // Streak flame meter "PANAS!": consecutive PERFECT serves pay x2 → x4.
+  // It sits right of the timer, clear of the score block on the right.
+  const f = g.fun;
+  if (f && f.streak >= 2) {
+    const mult = streakMult(f.streak);
+    text(ctx, `${'🔥'.repeat(Math.min(f.streak, 4))} x${mult} PANAS!`, 700, 45, 20, '#ff7b00', 'left', 900);
+  }
+  // JAM RAMAI banner: a full-width red strip under the top bar, with the
+  // live countdown. It ends at y=98, clear of the PESANAN label at y=100.
+  if (f && f.rush.active) {
+    ctx.fillStyle = '#e63946';
+    ctx.fillRect(0, 76, VIEW_W, 22);
+    text(ctx, `🔥 JAM RAMAI! Semua poin x2 • ${Math.ceil(f.rush.tLeft)} detik lagi`, 640, 87, 14, '#fff', 'center', 900);
+  }
 }
 
 function drawOrders(ctx, g) {
@@ -246,9 +261,30 @@ function drawOrders(ctx, g) {
       cx += w + 4;
     }
     text(ctx, `+${recipe.base} poin`, x + 284, 150, 13, '#b3541e', 'right', 700);
-    if (cust.state === 'happy') {
-      text(ctx, '✓ TERIMA KASIH!', x + 150, 246, 16, '#2d9d4e', 'center', 900);
+    // Golden ticket: gold frame + star tag — the shift's chase order.
+    if (cust.golden) {
+      ctx.strokeStyle = '#ffd166';
+      ctx.lineWidth = 4;
+      rr(ctx, x, 112, 300, 158, 12);
+      ctx.stroke();
+      ctx.fillStyle = '#ffd166';
+      rr(ctx, x + 168, 118, 126, 22, 8);
+      ctx.fill();
+      text(ctx, '⭐ EMAS +100', x + 231, 129, 12, '#3a1c00', 'center', 900);
     }
+    if (cust.state === 'happy') {
+      // Customer reaction: the serve loop finally answers back.
+      text(ctx, '💖 ENAK! • TERIMA KASIH!', x + 150, 246, 16, '#2d9d4e', 'center', 900);
+    }
+  }
+  // Walkout reactions: a storm pill above the ticket slot someone just left.
+  const reactions = (g.fun && g.fun.reactions) || [];
+  for (const r of reactions) {
+    const x = slots[r.slot] ?? slots[0];
+    ctx.fillStyle = 'rgba(10,5,20,0.9)';
+    rr(ctx, x + 80, 88, 140, 22, 9);
+    ctx.fill();
+    text(ctx, r.text, x + 150, 99, 13, '#ff6b6b', 'center', 800);
   }
   // Waiting customers by the serve window.
   let ax = 972;
@@ -279,6 +315,15 @@ function drawStations(ctx, g, t) {
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.fillRect(x, y + 30, 58, 14);
     text(ctx, item.name, x + 29, y + 22, 13, '#3a1c00', 'center', 800);
+    // The shift's rare ingredient: gold frame + sparkle on its chip, so
+    // the bonus recipe's key ingredient is findable at a glance.
+    if (g.fun && g.fun.bonus && g.fun.bonus.rareId === item.id) {
+      ctx.strokeStyle = '#ffd166';
+      ctx.lineWidth = 3;
+      rr(ctx, x, y, 58, 44, 10);
+      ctx.stroke();
+      text(ctx, '✨', x + 50, y + 10, 14, '#ffd166', 'center', 900);
+    }
   });
   // Chop board.
   const chop = STATIONS.chop;

@@ -63,7 +63,16 @@ export const RECIPES = [
   },
 ];
 
+// The shift's bonus recipe (Pesanan Emas / Bahan Langka) is chosen
+// deterministically from the seed in fun.js and registered here, so every
+// lookup — customers, the pilot, the path validator — sees the same list.
+let BONUS_RECIPE = null;
+export function setBonusRecipe(r) { BONUS_RECIPE = r; }
+export function getBonusRecipe() { return BONUS_RECIPE; }
+export function allRecipes() { return BONUS_RECIPE ? [...RECIPES, BONUS_RECIPE] : RECIPES; }
+
 export function recipeById(id) {
+  if (id === 'langka' && BONUS_RECIPE) return BONUS_RECIPE;
   return RECIPES.find((r) => r.id === id) || null;
 }
 

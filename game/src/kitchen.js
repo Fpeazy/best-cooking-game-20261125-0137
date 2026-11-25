@@ -4,14 +4,17 @@
 import { makeRng, SHIFT_SECONDS, WIN_SCORE, MAX_WALKOUTS, GRILL_SLOTS } from './config.js';
 import { RECIPES, recipeById, validatePath } from './recipes.js';
 import { makeCustomers, ensureCustomers, tickCustomers, serveCustomer } from './customers.js';
+import { makeFun, resetFun, funTick, funBreakStreak, funOnServe, funOnWalkout, rushActive } from './fun.js';
 import { makeGrill, grillTick, stokeGrill, grillPlace, grillTake, grillQuality } from './grill.js';
 import { makeChef, chefTick, chefWalkTo, chefNearStation } from './chef.js';
 import { audioChop, audioPlace, audioDing, audioFail, audioServe, audioStoke } from './audio.js';
 
 export function makeGame(seed) {
   const rng = makeRng(seed || 20261125);
+  const fun = makeFun(seed || 20261125);
   return {
     rng,
+    fun,
     phase: 'title',
     elapsed: 0,
     timeLeft: SHIFT_SECONDS,
@@ -22,7 +25,7 @@ export function makeGame(seed) {
     served: 0,
     failed: 0,
     walkouts: 0,
-    customers: makeCustomers(rng),
+    customers: makeCustomers(rng, fun),
     grill: makeGrill(),
     chef: makeChef(),
     skewer: null, // chef's skewer: { items:[], chopped, done, burnt, sauces:[], garnishes:[], steps:[], recipeId }
@@ -49,7 +52,8 @@ export function startGame(g) {
   g.served = 0;
   g.failed = 0;
   g.walkouts = 0;
-  g.customers = makeCustomers(g.rng);
+  g.customers = makeCustomers(g.rng, g.fun);
+  resetFun(g.fun);
   g.grill = makeGrill();
   g.chef = makeChef();
   g.skewer = null;
@@ -135,6 +139,7 @@ export function actGrillTake(g, idx) {
     say(g, 'GOSONG! Sate hangus — buang dan mulai lagi.', 2.5);
     g.skewer = null;
     g.combo = 0;
+    funBreakStreak(g); // a burnt slot kills the PANAS! streak too
     g.failed += 1;
     if (g.audio) audioFail(g.audio);
     return false;
@@ -214,6 +219,7 @@ export function actServe(g) {
   if (!match) {
     g.failed += 1;
     g.combo = 0;
+    funBreakStreak(g); // a wrong dish kills the PANAS! streak too
     g.flash = { text: 'SALAH URUTAN!', color: '#e63946', t: 1.4 };
     g.plate = null;
     if (g.audio) audioFail(g.audio);
@@ -222,7 +228,10 @@ export function actServe(g) {
   }
   const perfect = g.plate.skewer.done >= 70 && g.plate.skewer.done <= 95;
   const res = serveCustomer(g.customers, match.recipe.id, perfect, g.elapsed);
-  const earned = res.score;
+  // Fun multipliers, applied for real: streak (x2 → x4), rush (x2),
+  // golden order (+100 tip). The flash shows the multiplier honestly.
+  const fun = funOnServe(g, res.customer, perfect, res.score);
+  const earned = fun.earned;
   g.score += earned;
   g.coins += earned;
   g.served += 1;
@@ -230,8 +239,8 @@ export function actServe(g) {
     g.combo += 1;
     g.bestCombo = Math.max(g.bestCombo, g.combo);
     g.perfectServes += 1;
-    g.flash = { text: `PERFECT + COMBO x${g.combo}`, color: '#ffd166', t: 1.6 };
-    burst(g, 1185, 360, '#ffd166', 22);
+    g.flash = { text: fun.mult > 1 ? `PERFECT x${fun.mult} + COMBO x${g.combo}` : `PERFECT + COMBO x${g.combo}`, color: '#ffd166', t: 1.6 };
+    burst(g, 1185, 360, '#ffd166', fun.mult > 1 ? 34 : 22);
     if (g.audio) audioServe(g.audio);
   } else {
     g.combo = 0;
@@ -246,8 +255,10 @@ export function gameTick(g, keys, dt) {
   if (g.phase === 'play') {
     g.elapsed += dt;
     g.timeLeft = Math.max(0, SHIFT_SECONDS - g.elapsed);
-    ensureCustomers(g.customers, g.elapsed, dt);
-    tickCustomers(g.customers, dt);
+    ensureCustomers(g.customers, g.elapsed, dt, rushActive(g.fun));
+    const walked = tickCustomers(g.customers, dt, rushActive(g.fun));
+    for (const slot of walked) funOnWalkout(g, slot);
+    funTick(g, dt);
     grillTick(g.grill, dt);
     g.walkouts = g.customers.walkouts;
     if (g.messageT > 0) g.messageT -= dt;
