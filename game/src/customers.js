@@ -1,0 +1,83 @@
+// SATE BAKAR — customers: order tickets, patience meters, walkouts, tips.
+// Pressure grows over the shift: new orders arrive faster and patience shrinks.
+import { RECIPES } from './recipes.js';
+
+const FACES = ['😀', '😊', '😋', '🤤', '😎', '🥰'];
+const NAMES = ['Budi', 'Sari', 'Agus', 'Rina', 'Dewi', 'Joko', 'Maya', 'Rudi'];
+
+export function makeCustomers(rng) {
+  return {
+    list: [],
+    served: 0,
+    walkouts: 0,
+    tips: 0,
+    spawnTimer: 0,
+    nextId: 1,
+    rng,
+  };
+}
+
+export function spawnCustomer(c, elapsed) {
+  const recipe = RECIPES[Math.floor(c.rng() * RECIPES.length)];
+  // Later in the shift patience is shorter and orders come faster.
+  const patienceMax = Math.max(28, 52 - elapsed * 0.16);
+  const face = FACES[Math.floor(c.rng() * FACES.length)];
+  const name = NAMES[Math.floor(c.rng() * NAMES.length)];
+  const customer = {
+    id: c.nextId,
+    name,
+    face,
+    recipeId: recipe.id,
+    patience: patienceMax,
+    patienceMax,
+    state: 'waiting',
+    mood: 1,
+  };
+  c.nextId += 1;
+  c.list.push(customer);
+  return customer;
+}
+
+export function ensureCustomers(c, elapsed, dt) {
+  if (c.list.length < 3) {
+    c.spawnTimer -= dt;
+    if (c.spawnTimer <= 0) {
+      spawnCustomer(c, elapsed);
+      // Spawn gap shrinks as the shift goes on: 9s early, ~4s late.
+      c.spawnTimer = Math.max(4, 9 - elapsed * 0.045);
+    }
+  }
+}
+
+export function tickCustomers(c, dt) {
+  for (const cust of c.list) {
+    if (cust.state !== 'waiting') continue;
+    cust.patience -= dt;
+    cust.mood = cust.patience / cust.patienceMax;
+    if (cust.patience <= 0) {
+      cust.state = 'left';
+      c.walkouts += 1;
+    }
+  }
+  c.list = c.list.filter((cust) => cust.state === 'waiting' || cust.state === 'happy');
+  // Happy customers linger a moment, then leave satisfied.
+  for (const cust of c.list) {
+    if (cust.state === 'happy') cust.happyT = (cust.happyT || 0) + dt;
+  }
+  c.list = c.list.filter((cust) => cust.state !== 'happy' || (cust.happyT || 0) < 2.5);
+}
+
+// Serve the plate to the first waiting customer whose recipe matches it.
+// Returns the score earned (0 when nobody wants that dish).
+export function serveCustomer(c, recipeId, perfect, elapsed) {
+  const idx = c.list.findIndex((cust) => cust.state === 'waiting' && cust.recipeId === recipeId);
+  if (idx < 0) return { score: 0, customer: null };
+  const cust = c.list[idx];
+  const recipe = RECIPES.find((r) => r.id === recipeId);
+  const speedBonus = Math.round((cust.patience / cust.patienceMax) * 40);
+  const score = recipe.base + speedBonus + (perfect ? 50 : 0);
+  cust.state = 'happy';
+  c.served += 1;
+  c.tips += speedBonus;
+  return { score, customer: cust };
+}
