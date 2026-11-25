@@ -95,11 +95,81 @@ export function drawBackground(ctx, g, t) {
   ctx.fillRect(0, 280, VIEW_W, 10);
   ctx.fillStyle = '#5a3418';
   for (let x = 0; x < VIEW_W; x += 90) ctx.fillRect(x, 300, 3, 160);
-  // Floor.
+  // Floor: checker tiles, then the dining area — 3 customer tables with
+  // seated guests, so the bottom third is a warung, not a void.
   ctx.fillStyle = '#2a1a3a';
   ctx.fillRect(0, 470, VIEW_W, 250);
   ctx.fillStyle = '#33204a';
   for (let x = 0; x < VIEW_W; x += 120) ctx.fillRect(x, 470, 2, 250);
+  for (let ry = 0; ry < 6; ry += 1) {
+    for (let cx0 = 0; cx0 < 16; cx0 += 1) {
+      if ((ry + cx0) % 2 === 0) {
+        ctx.fillStyle = 'rgba(255,255,255,0.035)';
+        ctx.fillRect(cx0 * 80, 470 + ry * 42, 80, 42);
+      }
+    }
+  }
+  const tables = [
+    { x: 170, face: '😋', shirt: '#4cc9f0' },
+    { x: 640, face: '😊', shirt: '#e63946' },
+    { x: 1110, face: '🤤', shirt: '#7ee081' },
+  ];
+  for (const tb of tables) {
+    // Hanging lamp over the table.
+    ctx.strokeStyle = 'rgba(255,209,102,0.6)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(tb.x, 470);
+    ctx.lineTo(tb.x, 548);
+    ctx.stroke();
+    const lampGlow = ctx.createRadialGradient(tb.x, 556, 2, tb.x, 556, 26);
+    lampGlow.addColorStop(0, 'rgba(255,209,102,0.55)');
+    lampGlow.addColorStop(1, 'rgba(255,209,102,0)');
+    ctx.fillStyle = lampGlow;
+    ctx.fillRect(tb.x - 26, 530, 52, 52);
+    ctx.fillStyle = '#ffd166';
+    ctx.beginPath();
+    ctx.arc(tb.x, 556, 9, 0, Math.PI * 2);
+    ctx.fill();
+    // Seated guest behind the table: shoulders, head, face.
+    ctx.fillStyle = tb.shirt;
+    rr(ctx, tb.x - 36, 622, 72, 36, 14);
+    ctx.fill();
+    ctx.fillStyle = '#f2c89b';
+    ctx.beginPath();
+    ctx.arc(tb.x, 606, 21, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#3a2a1a';
+    ctx.beginPath();
+    ctx.arc(tb.x, 600, 21, Math.PI, 0);
+    ctx.fill();
+    text(ctx, tb.face, tb.x, 610, 22, '#000', 'center');
+    // Round wooden table with a cloth edge.
+    ctx.fillStyle = '#8a5a2b';
+    rr(ctx, tb.x - 118, 650, 236, 48, 10);
+    ctx.fill();
+    ctx.fillStyle = '#a4713b';
+    ctx.beginPath();
+    ctx.ellipse(tb.x, 652, 118, 16, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fdf3d0';
+    ctx.beginPath();
+    ctx.ellipse(tb.x, 652, 96, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // A dish on the table once a customer has actually been served.
+    if (g.served > 0 && tb.x === 1110) {
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.ellipse(tb.x, 650, 26, 9, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#f2a65a';
+      ctx.beginPath();
+      ctx.arc(tb.x - 8, 648, 6, 0, Math.PI * 2);
+      ctx.arc(tb.x + 8, 648, 6, 0, Math.PI * 2);
+      ctx.fill();
+      text(ctx, '✓', tb.x + 34, 646, 18, '#7ee081', 'center', 900);
+    }
+  }
   // Grill glow on the floor.
   const glow = ctx.createRadialGradient(585, 380, 10, 585, 380, 260);
   glow.addColorStop(0, 'rgba(255,123,0,0.35)');
@@ -112,7 +182,7 @@ function drawTopBar(ctx, g) {
   ctx.fillStyle = 'rgba(10,5,20,0.85)';
   ctx.fillRect(0, 14, VIEW_W, 62);
   text(ctx, '🔥 SATE BAKAR', 24, 45, 30, '#ffd166', 'left', 900);
-  text(ctx, 'Warung 60 Detik', 250, 46, 16, '#f8edeb', 'left', 600);
+  text(ctx, 'Warung 60 Detik', 274, 46, 16, '#f8edeb', 'left', 600);
   // Timer — big, red under 10 seconds.
   const mm = Math.floor(g.timeLeft / 60);
   const ss = Math.floor(g.timeLeft % 60).toString().padStart(2, '0');
@@ -272,6 +342,25 @@ function drawStations(ctx, g, t) {
     }
   });
   text(ctx, `Arang ${Math.round(g.grill.heat)}° — [Space] kipas`, grill.x + 165, grill.y + 152, 12, '#ffd166', 'center', 700);
+  // Burnt slot: smoke + a GOSONG pill — the fail-state juice, and the
+  // combo-break cue. The pill sits in the grill's own top strip, clear of
+  // the BAKAR label (x 428-504) and of the grill body below it.
+  const burntIdx = g.grill.slots.findIndex((s) => s && s.burnt);
+  if (burntIdx >= 0) {
+    const bx = grill.x + 52 + burntIdx * 72;
+    for (let i = 0; i < 3; i += 1) {
+      ctx.globalAlpha = 0.4 - i * 0.1;
+      ctx.fillStyle = '#b8b8b8';
+      ctx.beginPath();
+      ctx.arc(bx + (i - 1) * 12, grill.y + 22 - i * 9, 8 + i * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#e63946';
+    rr(ctx, grill.x + 110, grill.y + 10, 220, 24, 9);
+    ctx.fill();
+    text(ctx, '🔥 GOSONG! Combo putus', grill.x + 220, grill.y + 22, 13, '#fff', 'center', 800);
+  }
   // Sauce station.
   const sauce = STATIONS.sauce;
   drawStationLabel(ctx, sauce, !!g.skewer && g.skewer.done > 0);
@@ -356,7 +445,7 @@ function drawPathLine(ctx, g, t) {
   ctx.save();
   ctx.globalAlpha = pulse;
   ctx.strokeStyle = '#ffd166';
-  ctx.lineWidth = 4;
+  ctx.lineWidth = 5;
   ctx.setLineDash([10, 8]);
   ctx.beginPath();
   ctx.moveTo(cx - 40, lineY);
@@ -371,7 +460,15 @@ function drawPathLine(ctx, g, t) {
   ctx.closePath();
   ctx.fill();
   ctx.restore();
-  text(ctx, `BERIKUTNYA: ${step.label}`, cx, lineY - 14, 13, '#ffd166', 'center', 800);
+  // The label sits on its own dark pill BELOW the line (lineY+6..+34), on an
+  // explicit anchor that cannot touch the "Arang" readout above the stations.
+  ctx.save();
+  ctx.globalAlpha = 0.95;
+  ctx.fillStyle = 'rgba(10,5,20,0.88)';
+  rr(ctx, cx - 118, lineY + 6, 236, 28, 9);
+  ctx.fill();
+  ctx.restore();
+  text(ctx, `BERIKUTNYA: ${step.label}`, cx, lineY + 20, 15, '#ffd166', 'center', 800);
 }
 
 function drawChef(ctx, g, t) {
@@ -395,6 +492,9 @@ function drawChef(ctx, g, t) {
   ctx.fillStyle = '#e63946';
   ctx.fillRect(x - 48, y - 30, 96, 14);
   text(ctx, 'SATE', x, y - 22, 13, '#fff', 'center', 900);
+  // Name tag on the apron itself — an explicit anchor that can never touch
+  // the bottom HUD line the way the old below-feet tag did.
+  text(ctx, 'KOKI WARUNG', x, y + 34, 10, '#b3541e', 'center', 800);
   // Arms.
   ctx.fillStyle = '#f2a65a';
   ctx.fillRect(x - 62, y - 24, 18, 52);
@@ -422,13 +522,11 @@ function drawChef(ctx, g, t) {
   ctx.beginPath();
   ctx.arc(x, y - 46, 9, 0.15 * Math.PI, 0.85 * Math.PI);
   ctx.stroke();
-  // Carried skewer above the head.
+  // Carried skewer in the chef's hand (right arm), never above the head.
   if (g.skewer) {
-    drawSkewer(ctx, x, y - 104, 84, g.skewer.items, g.skewer.done, -0.12);
-    if (g.skewer.done > 0) text(ctx, `${Math.round(g.skewer.done)}% matang`, x, y - 122, 12, '#ffd166', 'center', 800);
+    drawSkewer(ctx, x + 58 * (c.facing || 1), y + 8, 84, g.skewer.items, g.skewer.done, -0.12);
+    if (g.skewer.done > 0) text(ctx, `${Math.round(g.skewer.done)}% matang`, x + 58 * (c.facing || 1), y - 14, 12, '#ffd166', 'center', 800);
   }
-  // Name tag.
-  text(ctx, 'KOKI WARUNG', x, y + 92, 12, '#ffd166', 'center', 800);
 }
 
 function drawParticles(ctx, g) {
@@ -471,18 +569,20 @@ function drawMessage(ctx, g) {
     text(ctx, g.message, VIEW_W / 2, 510, 16, '#fff', 'center', 700);
   }
   if (g.flash) {
+    // PERFECT stamp: small, top-right corner (264x40, ~60% of the old
+    // 440x68), so the grill and the dish stay visible in every shot.
     const a = Math.min(1, g.flash.t);
     ctx.save();
-    ctx.globalAlpha = a;
-    ctx.translate(VIEW_W / 2, 300);
+    ctx.globalAlpha = a * 0.92;
+    ctx.translate(1130, 118);
     ctx.rotate(-0.06);
     ctx.fillStyle = g.flash.color;
-    rr(ctx, -220, -34, 440, 68, 12);
+    rr(ctx, -132, -20, 264, 40, 10);
     ctx.fill();
     ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 3;
     ctx.stroke();
-    text(ctx, g.flash.text, 0, 2, 30, g.flash.color === '#ffd166' ? '#3a1c00' : '#fff', 'center', 900);
+    text(ctx, g.flash.text, 0, 1, 18, g.flash.color === '#ffd166' ? '#3a1c00' : '#fff', 'center', 900);
     ctx.restore();
   }
 }
@@ -496,7 +596,7 @@ function drawOverlay(ctx, g) {
     text(ctx, 'Warung 60 Detik', 640, 310, 30, '#fff', 'center', 700);
     text(ctx, 'Tusuk — Potong — Bakar — Saus — Sajikan. Ikuti urutan resepnya!', 640, 360, 20, '#f8edeb', 'center', 600);
     text(ctx, 'WASD / panah gerak  •  E pakai stasiun  •  Space kipas arang  •  Klik juga bisa', 640, 400, 18, '#ffd166', 'center', 600);
-    text(ctx, 'Target: 600 poin sebelum waktu habis — 3 pelanggan kabur = kalah', 640, 440, 18, '#fff', 'center', 600);
+    text(ctx, `Target: ${WIN_SCORE} poin sebelum waktu habis — 3 pelanggan kabur = kalah`, 640, 440, 18, '#fff', 'center', 600);
     ctx.fillStyle = '#e63946';
     rr(ctx, 520, 480, 240, 56, 14);
     ctx.fill();

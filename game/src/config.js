@@ -3,7 +3,7 @@
 export const VIEW_W = 1280;
 export const VIEW_H = 720;
 export const SHIFT_SECONDS = 120;
-export const WIN_SCORE = 600;
+export const WIN_SCORE = 1200;
 export const MAX_WALKOUTS = 3;
 export const GRILL_SLOTS = 4;
 export const STEP = 1 / 60;

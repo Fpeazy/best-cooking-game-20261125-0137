@@ -3,6 +3,7 @@
 // uses, and freezes the frame at the moment each scene asks for. Every number
 // on screen (timer, score, combo, doneness) is the live state of that run.
 import { makeGame, startGame, gameTick, actIngredient, actChop, actGrillPlace, actGrillTake, actSauce, actPlate, actGarnish, actServe, actStoke, actDiscard } from './kitchen.js';
+import { spawnCustomer } from './customers.js';
 import { recipeById } from './recipes.js';
 import { grillQuality } from './grill.js';
 
@@ -84,8 +85,19 @@ function freeze(g) {
     flash: g.flash ? g.flash.text : null,
     grillHeat: Math.round(g.grill.heat),
     grillSlots: g.grill.slots.map((s) => (s ? Math.round(s.done) : null)),
+    grillBurnt: g.grill.slots.filter((s) => s && s.burnt).length,
     plateSteps: g.plate ? g.plate.taken.length : 0,
   };
+}
+
+// Top every staged frame up to 3 waiting customers (unique names come from
+// the session pool in customers.js), so no ticket ever reads "— kosong —".
+function topUpOrders(g) {
+  let guard = 0;
+  while (g.customers.list.filter((c) => c.state === 'waiting').length < 3 && guard < 6) {
+    spawnCustomer(g.customers, g.elapsed);
+    guard += 1;
+  }
 }
 
 export function stageScene(name) {
@@ -94,19 +106,36 @@ export function stageScene(name) {
   if (name === 'grill') {
     // Freeze with a skewer sizzling and the chef holding the next chopped one.
     runFor(g, 40, (state) => state.elapsed > 25 && state.grill.slots.filter((s) => s && s.done > 40).length >= 1 && state.skewer && state.skewer.chopped);
+    // Fail-state juice, earned for real: idle the pilot (no takes) while
+    // stoking, so a slot cooks past 100 and burns. A burnt slot breaks the
+    // combo in real play, so the combo is reset here too.
+    for (let i = 0; i < Math.round(16 / DT); i += 1) {
+      if (g.grill.heat < 55) actStoke(g);
+      gameTick(g, IDLE_KEYS, DT);
+      if (g.phase !== 'play') break;
+      if (g.grill.slots.some((s) => s && s.done > 105)) break;
+    }
+    if (g.grill.slots.some((s) => s && s.burnt)) g.combo = 0;
+    // Resume the pilot briefly so the chef is holding the next chopped skewer.
+    runFor(g, 12, (state) => state.skewer && state.skewer.chopped);
   } else if (name === 'plate') {
-    // Freeze mid-assembly: a plated dish with its first garnish on, mid-shift.
-    runFor(g, 60, (state) => state.elapsed > 25 && state.plate && state.plate.skewer.garnishes.length >= 1);
+    // Freeze mid-assembly: a plated dish with its first garnish on, and a
+    // next step still remaining so the BERIKUTNYA path line is visible.
+    runFor(g, 60, (state) => state.elapsed > 25 && state.plate && state.plate.skewer.garnishes.length >= 1
+      && state.plate.taken.length < recipeById(state.plate.skewer.recipeId).steps.length);
   } else if (name === 'serve') {
     // Freeze on the PERFECT stamp, right after a perfect serve, mid-shift.
     runFor(g, 90, (state) => state.elapsed > 30 && state.flash && state.flash.text.startsWith('PERFECT'));
   } else {
-    // Cover: mid-rush — late shift, score on the board, a perfect serve landing.
-    runFor(g, 100, (state) => state.elapsed > 100 && state.flash && state.flash.text.startsWith('PERFECT'));
+    // Cover: freeze on a PERFECT serve with the score GENUINELY near the
+    // 1200 target — never 4x it, never faked. The autopilot earns roughly
+    // 140-240 per serve, so the first PERFECT flash past 900 lands ~900-1150.
+    runFor(g, 110, (state) => state.elapsed > 45 && state.score >= 900 && state.flash && state.flash.text.startsWith('PERFECT'));
     if (!g.flash) runFor(g, 20, (state) => state.flash && state.flash.text.startsWith('PERFECT'));
   }
+  topUpOrders(g);
   // Keep the chef near the grill for the cover, near the plate otherwise.
-  g.chef.x = name === 'plate' ? 1015 : name === 'serve' ? 1100 : 585;
+  g.chef.x = name === 'plate' ? 1015 : name === 'serve' ? 1100 : 480;
   g.chef.targetX = null;
   // A clean frame: no transient hint bar over the chef.
   g.message = '';

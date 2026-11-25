@@ -56,7 +56,7 @@ async function playToWin(page) {
       });
       if (next) { const [x, y] = GARN[next]; await page.mouse.click(x, y); }
       else await page.mouse.click(1185, 375); // SAJIKAN
-      await page.waitForTimeout(250);
+      await page.waitForTimeout(150);
       continue;
     }
     if (s.skewer && s.skewer.done > 0) {
@@ -68,40 +68,40 @@ async function playToWin(page) {
       });
       if (nextSauce) { const [x, y] = SAUCE[nextSauce]; await page.mouse.click(x, y); }
       else await page.mouse.click(1015, 375); // plate counter
-      await page.waitForTimeout(250);
+      await page.waitForTimeout(150);
       continue;
     }
     // Take a perfect skewer off the grill if the hand is free.
     const perfectIdx = s.grill.findIndex((d) => d !== null && d >= 70 && d <= 95);
     if (perfectIdx >= 0 && !s.skewer) {
       await page.mouse.click(472 + perfectIdx * 72, 372);
-      await page.waitForTimeout(250);
+      await page.waitForTimeout(150);
       continue;
     }
     if (s.skewer) {
       if (!s.skewer.chopped) {
         await page.mouse.click(325, 375); // chop board (sets chopping)
-        await page.waitForTimeout(700);
+        await page.waitForTimeout(500);
       } else {
         await page.mouse.click(585, 375); // grill body: place skewer
       }
-      await page.waitForTimeout(250);
+      await page.waitForTimeout(150);
       continue;
     }
-    // Empty hands, nothing perfect: wait while a skewer cooks, else start an order.
-    const cooking = s.grill.some((d) => d !== null && d < 70);
-    if (cooking) { await page.waitForTimeout(500); continue; }
-    if (s.orders.length > 0) {
+    // Empty hands: grill a second skewer in parallel while the first cooks
+    // (up to 2 slots), so throughput — and the score — roughly doubles.
+    const occupied = s.grill.filter((d) => d !== null).length;
+    if (s.orders.length > 0 && occupied < 2) {
       const items = await page.evaluate(() => {
         const g = window.__game;
         const first = g?.customers.list.find((c) => c.state === 'waiting');
         if (!first) return ['chicken'];
         return { ayam: ['chicken'], sapi: ['beef', 'mushroom'], tahu: ['tofu', 'tempeh'], campur: ['chicken', 'beef', 'tofu'] }[first.recipeId];
       });
-      for (const it of items) { const [x, y] = ING[it]; await page.mouse.click(x, y); await page.waitForTimeout(150); }
+      for (const it of items) { const [x, y] = ING[it]; await page.mouse.click(x, y); await page.waitForTimeout(120); }
       continue;
     }
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(300);
   }
   const s = await snap(page);
   console.log('WIN RUN timeout:', JSON.stringify(s));

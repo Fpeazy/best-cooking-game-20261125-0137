@@ -14,6 +14,7 @@ export function makeCustomers(rng) {
     spawnTimer: 0,
     nextId: 1,
     rng,
+    usedNames: [], // names already used this session: never repeat in one frame
   };
 }
 
@@ -22,7 +23,12 @@ export function spawnCustomer(c, elapsed) {
   // Later in the shift patience is shorter and orders come faster.
   const patienceMax = Math.max(28, 52 - elapsed * 0.16);
   const face = FACES[Math.floor(c.rng() * FACES.length)];
-  const name = NAMES[Math.floor(c.rng() * NAMES.length)];
+  // Unique name per session: draw from the names not yet used; reshuffle the
+  // pool only once every name has been used, so one frame never repeats a name.
+  let pool = NAMES.filter((n) => !c.usedNames.includes(n));
+  if (pool.length === 0) { c.usedNames = []; pool = NAMES.slice(); }
+  const name = pool[Math.floor(c.rng() * pool.length)];
+  c.usedNames.push(name);
   const customer = {
     id: c.nextId,
     name,
